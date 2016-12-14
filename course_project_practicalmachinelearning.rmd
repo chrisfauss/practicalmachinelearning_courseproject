@@ -1,0 +1,130 @@
+# Course Project Practical Machine Learning
+
+## Background of the project
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset). 
+
+## Task of the project
+The goal of your project is to predict the manner in which they did the exercise. This is the "classe" variable in the training set. You may use any of the other variables to predict with. You should create a report describing how you built your model, how you used cross validation, what you think the expected out of sample error is, and why you made the choices you did. You will also use your prediction model to predict 20 different test cases. 
+
+## Loading required libraries
+The following libraries will be used in the project:
+```{r}
+# Load the libraries
+        library(caret)
+        library(randomForest)
+```
+
+## Get the data
+```{r}
+# Set seed
+        set.seed(123)
+
+# Define na.strings as na values that can occur in the data set
+        nastrings <- c("","NA","#DIV/0!")
+
+# Get the training data set
+        url_train <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+        dat_train <- read.csv(url_train, header = T, na.strings = nastrings)
+
+# Get the test data set
+        url_test <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+        dat_test <- read.csv(url_test, header = T, na.strings = nastrings)
+
+```
+
+## Split the train data set in training and test
+40% of the training data set will be used for cross validation.
+```{r}
+# Create the partion with 60% in training
+        inTrain <- createDataPartition(y=dat_train$classe,p=0.6,list=FALSE)
+# Use the partion on the dat_training data set and create two new data sets training and testing
+        training <- dat_train[inTrain,]
+        testing <- dat_train[-inTrain,]
+```
+
+## Select the features
+Not all columns of the data set are useful features for the model. Therefore, the following steps are performed in order to clean the data set and focus only on the meaningful features.
+Performed cleaning steps:
+
+* Remove columns with mostly NA values (> 75% NA values)
+* Remove columns which do not serve as predictors
+* Remove columns which have near zero variance
+
+```{r}
+# 1. Remove columns with mostly NA values (> 75% NA values)
+        # Create a vector with valid colums which means that they have equal or less than 75% NA values
+                valid_cols <- c()
+                for(i in 1:length(training)){
+                        percent_na <- sum(is.na(training[,i]))/length(training[,i])
+                        col <- names(training)[i]
+                        if(percent_na <= 0.75){
+                                valid_cols <- c(valid_cols,col) 
+                        }
+                }
+        # Filter the training set only on the valid columns
+                training_clean <- training[,names(training) %in% valid_cols]
+                
+# 2. Remove columns which do not serve as predictors like ids, tamestamps, names, etc.
+        # Check the names of the data set
+                names(training_clean)
+        # Predictor variables have either belt, arm, dumbbell or forearm in their name
+        # Keep those and add classe
+                valid_cols2 <- names(training_clean)[grepl("belt|arm|dumbbell",names(training_clean))==TRUE]
+                training_clean <- training_clean[,names(training_clean) %in% c(valid_cols2,"classe")]
+                
+# 3. Remove columns which have near zero variance
+        # Create vector with columns which have NOT near zero variance
+                dat_near0var <- nearZeroVar(training_clean, saveMetrics = TRUE)
+                no_near0var <- row.names(dat_near0var[dat_near0var$nzv == FALSE,])
+        # Filter on columns which are in the no_near0var vector
+                training_clean <- training_clean[,names(training_clean) %in% no_near0var]
+```
+
+Filter the data sets dat_test and testing on the same valid colums as determined for the training data set:
+```{r}
+# Get the names from the training data set without classe
+        valid_cols_final1 <- names(training_clean)
+        valid_cols_final2 <- valid_cols_final1[grepl("classe",valid_cols_final1)==F]
+# Filter dat_test and testing
+        dat_test_clean <- dat_test[,names(dat_test) %in% valid_cols_final2]
+        testing_clean <- testing[,names(testing) %in% valid_cols_final1]
+```
+
+## Prediction model: Random Forest
+I decided to take the random forest prediction model because it is one of the top performing models for predicting. 
+```{r}
+# Set seed
+        set.seed(123)
+
+# Train the model
+        # Create model fit with random forest
+                modfit_rf <- randomForest(classe ~ ., data=training_clean)
+        # Print the model fit
+                print(modfit_rf)
+        # Plot the model
+                plot(modfit_rf)
+                   
+# Test the model
+        # Predict
+                predict_rf <- predict(modfit_rf, testing_clean, type = "class")
+        # Create the confusion matrix
+                cm <- confusionMatrix(predict_rf, testing_clean$classe)
+        # Print the confusion matrix
+                print(cm)
+
+# Check the accuracy of the model
+        cm$overall['Accuracy']
+        
+# Plot the confusion matrik 
+        plot(cm$table,main="Random Forest Confusion Matrix")
+```
+
+## Comment on the accuracy of the model
+The model created with the random forest method has a quite good accuracy `r paste0(round(cm$overall['Accuracy'],4)*100," %")`. The expected out-of-sample error is 100 % - `r paste0(round(cm$overall['Accuracy'],4)*100," %")` = `r paste0(round(100-cm$overall['Accuracy']*100,2)," %")`.
+
+## Prediction of the 20 test cases
+
+```{r}
+# Predict the 20 test cases based on the random forest model fit
+        predict(modfit_rf, dat_test_clean, type = "class")
+```
